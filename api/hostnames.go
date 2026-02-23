@@ -1,0 +1,42 @@
+package api
+
+/*
+服务器主机名列表
+值对应RequestConfig中HostName
+*/
+const (
+	CdnURL                     = "CdnUrl"
+	StaticWebVersionURL        = "StaticWebVersionUrl"
+	StaticWeb2VersionURL       = "StaticWeb2VersionUrl"
+	SeadraURL                  = "SeadraUrl"
+	EmbedWebPageURL            = "EmbedWebPageUrl"
+	NewsVideo                  = "NewsVideo"
+	GameCenter                 = "GameCenter"
+	VideoPrefix                = "VideoPrefix"
+	ComponentCenter            = "ComponentCenter"
+	GameDetail                 = "GameDetail"
+	CompDetail                 = "CompDetail"
+	LiveURL                    = "LiveUrl"
+	ForumURL                   = "ForumUrl"
+	WebServerURL               = "WebServerUrl"
+	WebServerGrayURL           = "WebServerGrayUrl"
+	CoreServerURL              = "CoreServerUrl"
+	TransferServerURL          = "TransferServerUrl"
+	PeTransferServerURL        = "PeTransferServerUrl"
+	PeTransferServerHTTPURL    = "PeTransferServerHttpUrl"
+	TransferServerHTTPURL      = "TransferServerHttpUrl"
+	PeTransferServerNewHTTPURL = "PeTransferServerNewHttpUrl"
+	AuthServerURL              = "AuthServerUrl"
+	AuthServerCppURL           = "AuthServerCppUrl"
+	AuthorityURL               = "AuthorityUrl"
+	CustomerServiceURL         = "CustomerServiceUrl"
+	ChatServerURL              = "ChatServerUrl"
+	PathNURL                   = "PathNUrl"
+	PePathNURL                 = "PePathNUrl"
+	MgbSdkURL                  = "MgbSdkUrl"
+	DCWebURL                   = "DCWebUrl"
+	APIGatewayURL              = "ApiGatewayUrl"
+	APIGatewayGrayURL          = "ApiGatewayGrayUrl"
+	PlatformURL                = "PlatformUrl"
+	RentalTransferURL          = "RentalTransferUrl"
+)
