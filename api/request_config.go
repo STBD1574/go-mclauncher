@@ -1,32 +1,21 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
-	"maps"
 	"math/rand"
-	"reflect"
+	"net/url"
 	"strings"
 )
 
 /*
 RequestConfig API请求统一配置
-
-	URL 请求URL
-	HostName ReleaseInfo中的URL字段常量
-	Host 直接指定域名，优先级高于HostName
-	Params 请求参数 当Method为GET时会拼接URL 当Method为POST时会作为Json请求体发送
-	Method HTTP方法
-	Headers 自定义请求头
-	HPack 是否使用HPack编码
-	NoBody 是否不发送请求体
-	Signal 是否请求取消/中断信号
-	NeedEncrypt 是否需要加密请求体
 */
 type RequestConfig struct {
 	URL         string
-	HostName    string // such as "WebServerUrl"
+	HostName    string // full URL
 	Host        string
-	Params      interface{} // Json body or URL query params
+	Params      interface{}
 	Method      string
 	Headers     map[string]string
 	HPack       bool
@@ -41,68 +30,92 @@ func (rc *RequestConfig) String() string {
 }
 
 /*
-获取完整URL（根据HostName从ServerList获取基础URL并拼接URL）
+获取URL
 */
-func (rc *RequestConfig) GetFullURL(serverList *ServerList) (string, error) {
-	var err error
-	fullURL := rc.URL
+func (rc *RequestConfig) getURL() (string, error) {
+	urlValue := rc.URL
+
+	if rc.Host != "" {
+		urlParser, err := url.Parse(rc.Host)
+		if err != nil {
+			return "", err
+		}
+
+		urlValue = urlParser.Path
+	}
 
 	if rc.Method == "GET" && rc.Params != nil {
 		query := ""
 
-		for key, value := range rc.Params.(map[string]interface{}) {
-			query += fmt.Sprintf("%s=%v&", key, value)
+		q := url.Values{}
+		for k, v := range rc.Params.(map[string]interface{}) {
+			q.Add(k, fmt.Sprintf("%v", v))
 		}
+		query = q.Encode()
 
 		if query != "" {
-			query = query[:len(query)-1] // Remove the trailing '&'
-			if strings.Contains(fullURL, "?") {
-				fullURL += "&" + query
+			if strings.Contains(urlValue, "?") {
+				urlValue += "&" + query
 			} else {
-				fullURL += "?" + query
+				urlValue += "?" + query
 			}
 		}
 	}
 
-	if !strings.HasPrefix(fullURL, "http") {
-		if rc.Host != "" {
-			return rc.Host + fullURL, nil
+	return urlValue, nil
+}
+
+/*
+获取请求域名
+*/
+func (rc *RequestConfig) getHostName(serverList *ServerList) (string, error) {
+	var err error
+	hostName := rc.HostName
+
+	if rc.Host != "" {
+		urlParser, err := url.Parse(rc.Host)
+		if err != nil {
+			return "", err
 		}
 
-		hostName := rc.HostName
-
-		switch hostName {
-		case "momentHost":
-			hostName = "MomentUrl"
-		case "HomeServerUrl":
-		case "ApiGatewayUrl":
-			hostName = serverList.APIGatewayURL
-		case "WebServerUrl":
-			hostName = serverList.WebServerURL
-		default:
-			hostName, err = getURLByHostName(serverList, hostName)
-			if err != nil {
-				return "", err
-			}
-		}
-
-		fullURL = hostName + fullURL
+		return urlParser.Scheme + "://" + urlParser.Host, nil
 	}
 
-	return fullURL, nil
+	if strings.HasPrefix(hostName, "http") {
+		return hostName, nil
+	}
+
+	switch hostName {
+	case "momentHost":
+		hostName = "MomentUrl"
+	case "HomeServerUrl", "ApiGatewayUrl":
+		hostName = serverList.APIGatewayURL
+	case "WebServerUrl":
+		hostName = serverList.WebServerURL
+	default:
+		hostName, err = serverList.Get(hostName)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return hostName, nil
 }
 
 /*
 获取请求头
 */
-func (rc *RequestConfig) GetHeaders(isGray bool) map[string]string {
+func (rc *RequestConfig) getHeaders(isGray bool) map[string]string {
 	headers := map[string]string{
 		"user-token":   "",
 		"user-id":      "",
 		"Content-Type": "application/json",
 		"X_TRACE_ID":   generateTraceID(),
 	}
-	maps.Copy(rc.Headers, headers)
+
+	for k, v := range rc.Headers {
+		headers[k] = v
+	}
 
 	if rc.HPack {
 		headers["hpack"] = "1"
@@ -124,22 +137,55 @@ func (rc *RequestConfig) GetHeaders(isGray bool) map[string]string {
 }
 
 /*
-通过反射获取hostName
+转换为HTTP请求所需的信息
 */
-func getURLByHostName(serverList *ServerList, hostName string) (string, error) {
-	serverListValue := reflect.ValueOf(serverList).Elem()
-	serverListType := serverListValue.Type()
+func (rc *RequestConfig) Transform(serverList *ServerList, isGray bool, userID string, userToken string, encryptor Encryptor) (string, string, map[string]string, []byte, error) {
+	var err error
+	url, err := rc.getURL()
+	if err != nil {
+		return "", "", nil, nil, err
+	}
 
-	for i := 0; i < serverListType.NumField(); i++ {
-		field := serverListType.Field(i)
-		jsonTag := field.Tag.Get("json")
+	hostName, err := rc.getHostName(serverList)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
 
-		if jsonTag == hostName {
-			return serverListValue.Field(i).String(), nil
+	headers := rc.getHeaders(isGray)
+	body := []byte{}
+	if rc.Method == "POST" && rc.Params != nil {
+		body, err = json.Marshal(rc.Params)
+		if err != nil {
+			return "", "", nil, nil, err
 		}
 	}
 
-	return "", fmt.Errorf("HostName %s not found in ServerList", hostName)
+	encryptedToken, err := encryptor.UserTokenEncrypt(url, body)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+
+	headers["user-token"] = string(encryptedToken)
+	headers["user-id"] = userID
+	if rc.NeedEncrypt {
+		body, err = encryptor.HttpEncrypt(body)
+		if err != nil {
+			return "", "", nil, nil, err
+		}
+	}
+
+	return hostName + url, rc.Method, headers, body, nil
+}
+
+/*
+进行加密
+*/
+func encrypt(string url, body, Encryptor encryptor) (string, string, []byte, error) {
+	encryptedToken, err := encryptor.UserTokenEncrypt(url, body)
+	if err != nil {
+		return "", "", nil, nil, err
+	}
+
 }
 
 /*

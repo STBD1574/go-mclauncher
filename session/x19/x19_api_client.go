@@ -1,11 +1,11 @@
 package x19
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"go-mclauncher/api"
 	"go-mclauncher/entities"
+	"go-mclauncher/session/x19/user"
 	"io"
 	"net/http"
 )
@@ -13,17 +13,15 @@ import (
 type X19APIClient struct {
 	Client     *http.Client
 	ServerList *api.ServerList
+
+	isGray bool
+	user   *user.X19User
 }
 
 func (c *X19APIClient) DoRequest(ctx context.Context, reqConfig *api.RequestConfig) (*http.Response, error) {
 	var buf io.Reader
-	if reqConfig.Params != nil {
-		jsonData, err := json.Marshal(reqConfig.Params)
-		if err != nil {
-			return nil, err
-		}
-		buf = bytes.NewBuffer(jsonData)
-	}
+
+	reqConfig.Transform(c.ServerList, c.isGray, c.user.ID, c.user.Token)
 
 	req, err := http.NewRequestWithContext(ctx, reqConfig.Method, "", buf)
 	if err != nil {

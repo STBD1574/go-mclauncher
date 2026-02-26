@@ -1,10 +1,13 @@
 package x19
 
 import (
+	"bytes"
+	"encoding/base64"
 	"errors"
 	"go-mclauncher/security"
 	"math"
 	"math/rand"
+	"strings"
 )
 
 func X19PickKey(query byte) []byte {
@@ -78,4 +81,39 @@ func X19HttpDecrypt(body []byte) ([]byte, error) {
 	}
 
 	return result[:scissorPos+1], nil
+}
+
+func X19ComputeDynamicToken(path string, body []byte, token string) string {
+	var payload bytes.Buffer
+	payload.WriteString(security.MD5Hex([]byte(token)))
+	payload.Write(body)
+	payload.WriteString("0eGsBkhl")
+	payload.WriteString(path)
+
+	sum := []byte(security.MD5Hex(payload.Bytes()))
+
+	// convert the md5 hex string to binary string
+	binaryString := security.ToBinaryString(sum)
+	// rotate the binary string
+	binaryString = binaryString[6:] + binaryString[:6]
+
+	// convert the binary string back and xor with the hex string
+	for i := 0; i < len(sum); i++ {
+		// binary string must be multiple of 8
+		section := binaryString[i*8 : i*8+8]
+		var by byte
+		for j := 0; j < 8; j++ {
+			if section[7-j] == '1' {
+				by = by | 1<<(j&0x1f)
+			}
+		}
+		sum[i] = byte(by) ^ sum[i]
+	}
+
+	// encode the xor-ed hex string to base64 and only take first 16 bytes
+	b64Encoded := base64.RawStdEncoding.EncodeToString(sum)
+	resultReplacer := strings.NewReplacer("+", "m", "/", "o")
+	result := resultReplacer.Replace(b64Encoded[:16] + "1")
+
+	return result
 }

@@ -2,7 +2,6 @@ package api
 
 /*
 服务器主机名列表
-值对应RequestConfig中HostName
 */
 const (
 	CdnURL                     = "CdnUrl"
