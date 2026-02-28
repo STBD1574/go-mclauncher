@@ -15,7 +15,7 @@ type RequestConfig struct {
 	URL         string
 	HostName    string // full URL
 	Host        string
-	Params      interface{}
+	Params      interface{} // json struct or a byte slice
 	Method      string
 	Headers     map[string]string
 	HPack       bool
@@ -137,7 +137,7 @@ func (rc *RequestConfig) getHeaders(isGray bool) map[string]string {
 }
 
 /*
-转换为HTTP请求所需的信息
+转换为HTTP请求所需的信息 (URL, Method, Headers, Body)
 */
 func (rc *RequestConfig) Transform(serverList *ServerList, isGray bool, userID string, userToken string, encryptor Encryptor) (string, string, map[string]string, []byte, error) {
 	var err error
@@ -154,38 +154,44 @@ func (rc *RequestConfig) Transform(serverList *ServerList, isGray bool, userID s
 	headers := rc.getHeaders(isGray)
 	body := []byte{}
 	if rc.Method == "POST" && rc.Params != nil {
+		if b, ok := rc.Params.([]byte); ok { // if params is a byte slice?
+			body = b
+		}
+
 		body, err = json.Marshal(rc.Params)
 		if err != nil {
 			return "", "", nil, nil, err
 		}
 	}
 
-	encryptedToken, err := encryptor.UserTokenEncrypt(url, body)
+	var encryptedToken string
+	encryptedToken, body, err = encrypt(url, body, rc.NeedEncrypt, userToken, encryptor)
 	if err != nil {
 		return "", "", nil, nil, err
 	}
 
-	headers["user-token"] = string(encryptedToken)
+	headers["user-token"] = encryptedToken
 	headers["user-id"] = userID
-	if rc.NeedEncrypt {
-		body, err = encryptor.HttpEncrypt(body)
-		if err != nil {
-			return "", "", nil, nil, err
-		}
-	}
 
 	return hostName + url, rc.Method, headers, body, nil
 }
 
 /*
-进行加密
+进行加密 (UserToken, Body)
 */
-func encrypt(string url, body, Encryptor encryptor) (string, string, []byte, error) {
-	encryptedToken, err := encryptor.UserTokenEncrypt(url, body)
-	if err != nil {
-		return "", "", nil, nil, err
+func encrypt(url string, body []byte, encryptBody bool, token string, encryptor Encryptor) (string, []byte, error) {
+	var err error
+	encryptedToken := encryptor.UserTokenEncrypt(url, body, token)
+	encryptedBody := body
+
+	if encryptBody {
+		encryptedBody, err = encryptor.HttpEncrypt(body)
+		if err != nil {
+			return "", nil, err
+		}
 	}
 
+	return encryptedToken, encryptedBody, nil
 }
 
 /*

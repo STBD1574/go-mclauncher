@@ -2,15 +2,21 @@ package api
 
 import (
 	"go-mclauncher/api"
+	"go-mclauncher/session/x19"
 	"testing"
 )
 
-func getFullUrl(t *testing.T, rc *api.RequestConfig, serverList *api.ServerList) {
-	fullURL, err := rc.GetFullURL(serverList)
+func parse(t *testing.T, rc *api.RequestConfig, serverList *api.ServerList) {
+	url, method, headers, body, err := rc.Transform(serverList, false, "", "", &x19.X19Encryptor{})
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Fatalf("Transform failed: %v", err)
 	}
-	t.Logf("Full URL: %s", fullURL)
+
+	t.Logf("URL: %s", url)
+	t.Logf("Method: %s", method)
+	t.Logf("Headers: %v", headers)
+	t.Logf("Body: %s", string(body))
+
 }
 
 func TestRequestConfig(t *testing.T) {
@@ -19,43 +25,43 @@ func TestRequestConfig(t *testing.T) {
 		ForumURL:      "https://forum.url",
 	}
 
-	t.Run("Get_1", func(t *testing.T) {
+	t.Run("Get_with_url", func(t *testing.T) {
 		rc := &api.RequestConfig{
 			URL:      "/test",
 			HostName: "ApiGatewayUrl",
 			Method:   "GET",
 		}
 
-		getFullUrl(t, rc, serverList)
+		parse(t, rc, serverList)
 	})
 
-	t.Run("Get_2", func(t *testing.T) {
+	t.Run("Get_with_url_2", func(t *testing.T) {
 		rc := &api.RequestConfig{
 			URL:      "/test",
 			HostName: "ForumUrl",
 			Method:   "GET",
 		}
 
-		getFullUrl(t, rc, serverList)
+		parse(t, rc, serverList)
 	})
 
-	t.Run("Get_3", func(t *testing.T) {
+	t.Run("Get_with_host", func(t *testing.T) {
 		rc := &api.RequestConfig{
-			URL:    "https://www.baidu.com/test",
+			Host:   "https://www.baidu.com/test",
 			Method: "GET",
 		}
 
-		getFullUrl(t, rc, serverList)
+		parse(t, rc, serverList)
 	})
 
-	t.Run("Get_by_host", func(t *testing.T) {
+	t.Run("Get_with_host_and_url", func(t *testing.T) {
 		rc := &api.RequestConfig{
 			URL:    "/test",
 			Host:   "https://www.baidu.com",
 			Method: "GET",
 		}
 
-		getFullUrl(t, rc, serverList)
+		parse(t, rc, serverList)
 	})
 
 	t.Run("Get_with_params", func(t *testing.T) {
@@ -69,6 +75,48 @@ func TestRequestConfig(t *testing.T) {
 			},
 		}
 
-		getFullUrl(t, rc, serverList)
+		parse(t, rc, serverList)
+	})
+
+	t.Run("Post_with_struct", func(t *testing.T) {
+		rc := &api.RequestConfig{
+			URL:      "/test",
+			HostName: "ApiGatewayUrl",
+			Method:   "POST",
+			Params: struct {
+				Key string `json:"key"`
+			}{
+				Key: "value",
+			},
+		}
+
+		parse(t, rc, serverList)
+	})
+
+	t.Run("Post_with_bytes", func(t *testing.T) {
+		rc := &api.RequestConfig{
+			URL:      "/test",
+			HostName: "ApiGatewayUrl",
+			Method:   "POST",
+			Params:   []byte(`{"key":"value"}`),
+		}
+
+		parse(t, rc, serverList)
+	})
+
+	t.Run("Post_encrypt", func(t *testing.T) {
+		rc := &api.RequestConfig{
+			URL:      "/test",
+			HostName: "ApiGatewayUrl",
+			Method:   "POST",
+			Params: struct {
+				Key string `json:"key"`
+			}{
+				Key: "value",
+			},
+			NeedEncrypt: true,
+		}
+
+		parse(t, rc, serverList)
 	})
 }

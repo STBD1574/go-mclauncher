@@ -21,7 +21,7 @@ type X19APIClient struct {
 func (c *X19APIClient) DoRequest(ctx context.Context, reqConfig *api.RequestConfig) (*http.Response, error) {
 	var buf io.Reader
 
-	reqConfig.Transform(c.ServerList, c.isGray, c.user.ID, c.user.Token)
+	//reqConfig.Transform(c.ServerList, c.isGray, c.user.ID, c.user.Token, &X19Encryptor{})
 
 	req, err := http.NewRequestWithContext(ctx, reqConfig.Method, "", buf)
 	if err != nil {
